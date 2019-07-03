@@ -1,67 +1,80 @@
 import glob
 import json
+import numpy as np
 import os
 import struct
 
 from lz4 import block
 
+
+class Component:
+    def __init__(self, midpoint: float, breadth: float, gradations: float):
+        self.midpoint = midpoint
+        self.breadth = breadth
+        self.gradations = gradations
+
+    def get_decimal_steps(self):
+        return np.linspace(-0.5, 0.5,
+                           int((self.breadth * 2) / self.gradations) + 1)
+
+
 Components = {
-        'Front Wing': {
-             'Midpoint': 15,
-             'Range': 5,
-             'Gradations': 0.1
-        },
-        'Rear Wing': {
-             'Midpoint': 25,
-             'Range': 5,
-             'Gradations': 0.1
-        },
-        'Pressure': {
-             'Midpoint': 21,
-             'Range': 3,
-             'Gradations': 0.6
-        },
-        'Camber': {
-             'Midpoint': -2,
-             'Range': 2,
-             'Gradations': 0.4
-        },
-        'Suspension': {
-             'Midpoint': 50,
-             'Range': 50,
-             'Gradations': 6.25
-        },
-        'Gears': {
-             'Midpoint': 50,
-             'Range': 50,
-             'Gradations': 6.25
-        }
+        'Front Wing': Component(
+            midpoint=15,
+            breadth=5,
+            gradations=0.1
+            ),
+        'Rear Wing': Component(
+            midpoint=25,
+            breadth=5,
+            gradations=0.1
+            ),
+        'Pressure': Component(
+            midpoint=21,
+            breadth=3,
+            gradations=0.6
+            ),
+        'Camber': Component(
+            midpoint=-2,
+            breadth=2,
+            gradations=0.4
+            ),
+        'Suspension': Component(
+            midpoint=50,
+            breadth=50,
+            gradations=6.25
+            ),
+        'Gears': Component(
+            midpoint=50,
+            breadth=50,
+            gradations=6.25
+            )
     }
 
 Qualities = {
         'Downforce': {
-                'Front Wing': round(-6 / 50, 5),
-                'Rear Wing': round(-4 / 50, 5),
-                'Pressure': round(0 / 50, 5),
-                'Camber': round(0 / 50, 5),
-                'Gears': round(0 / 50, 5),
-                'Suspension': round(0 / 50, 5)
+                'Front Wing': -6 / 50,
+                'Rear Wing': -4 / 50,
+                'Pressure': 0 / 50,
+                'Camber': 0 / 50,
+                'Gears': 0 / 50,
+                'Suspension': 0 / 50
         },
         'Handling': {
-                'Front Wing': round(1 / 50, 5),
-                'Rear Wing': round(1 / 50, 5),
-                'Pressure': round((2.5 / 3) / 50, 5),
-                'Camber': round(-3.75 / 50, 5),
-                'Gears': round(-0.05 / 50, 5),
-                'Suspension': round(-0.6 / 50, 5)
+                'Front Wing': 1 / 50,
+                'Rear Wing': 1 / 50,
+                'Pressure': (2.5 / 3) / 50,
+                'Camber': -3.75 / 50,
+                'Gears': -0.05 / 50,
+                'Suspension': -0.6 / 50
         },
         'Speed': {
-                'Front Wing': round(-1.5 / 50, 5),
-                'Rear Wing': round(-2.5 / 50, 5),
-                'Pressure': round((-2.5 / 3) / 50, 5),
-                'Camber': round(3.75 / 50, 5),
-                'Gears': round(0.6 / 50, 5),
-                'Suspension': round(0.1 / 50, 5)
+                'Front Wing': -1.5 / 50,
+                'Rear Wing': -2.5 / 50,
+                'Pressure': (-2.5 / 3) / 50,
+                'Camber': 3.75 / 50,
+                'Gears': 0.6 / 50,
+                'Suspension': 0.1 / 50
         }
     }
 
@@ -242,6 +255,6 @@ def optimum_setup(max_depth):
 # Speed = round(random.random(),2);
 # print('Downforce: %f, Handling: %f, Speed: %f' % (Downforce,Handling,Speed));
 
-
-optimum_setup(10)
-# optimum_setup(0.5,0.5,0.5);
+if __name__ == '__main__':
+    optimum_setup(10)
+    # optimum_setup(0.5,0.5,0.5);
