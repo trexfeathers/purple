@@ -6,6 +6,7 @@ import struct
 import typing
 import itertools
 import random
+import time
 
 
 class Component:
@@ -44,8 +45,8 @@ class Engineer:
         )
 
         self.components = (
-            Component(15, 5, 0.4),
-            Component(25, 5, 0.4),
+            Component(15, 5, 1),
+            Component(25, 5, 1),
             Component(21, 3, 0.6),
             Component(2, 2, 0.4),
             Component(50, 50, 6.25),
@@ -76,7 +77,6 @@ class Engineer:
         setup_base = np.zeros(6, dtype=np.float16)
         setup_best = [setup_base, self.setup_delta(setup_base, target)]
 
-        # for setup in itertools.product(*Decimal_Steps_Collated):
         for setup in cartesian(self.decimal_steps_collated):
             target_delta = self.setup_delta(setup, target)
             if abs(target_delta) < abs(setup_best[1]):
@@ -139,7 +139,10 @@ def cartesian(arrays_input, out=None):
 
 
 if __name__ == '__main__':
+    st = time.time()
     target_setup = [random.random() - 0.5 for i in range(3)]
     print('target:  ', target_setup)
     engineer = Engineer()
     engineer.find_closest_setup(target_setup)
+    elapsed = time.time() - st
+    print(str(elapsed))
