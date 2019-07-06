@@ -8,6 +8,8 @@ import itertools
 import random
 import time
 
+import numba
+
 
 class Component:
     def __init__(self, midpoint: float, breadth: float, gradations: float):
@@ -24,7 +26,7 @@ class Quality:
     def __init__(self, component_percent_effects:
                  typing.Tuple[float, float, float, float, float, float]):
         self.component_effects = \
-            np.asarray([i / 100 for i in component_percent_effects], dtype=np.float16)
+            np.asarray([i / 100 for i in component_percent_effects])
 
 
 class Engineer:
@@ -45,8 +47,8 @@ class Engineer:
         )
 
         self.components = (
-            Component(15, 5, 1),
-            Component(25, 5, 1),
+            Component(15, 5, 0.4),
+            Component(25, 5, 0.4),
             Component(21, 3, 0.6),
             Component(2, 2, 0.4),
             Component(50, 50, 6.25),
@@ -70,20 +72,31 @@ class Engineer:
     ):
         setup_outcome = np.sum(
             np.multiply(setup, self.component_effects_collated), 1)
-        return np.sum(np.subtract(setup_outcome, target), dtype=np.float16)
+        return np.sum(np.subtract(setup_outcome, target))
 
     def find_closest_setup(self, target: np.ndarray(shape=[3])):
-        target = np.asarray(target, dtype=np.float16)
-        setup_base = np.zeros(6, dtype=np.float16)
-        setup_best = [setup_base, self.setup_delta(setup_base, target)]
+        target = np.asarray(target)
+        setup_base = np.zeros(6)
+        setup_best = [setup_base, setup_delta(setup_base, target, self.component_effects_collated)]
 
         for setup in cartesian(self.decimal_steps_collated):
-            target_delta = self.setup_delta(setup, target)
+            target_delta = setup_delta(setup, target, self.component_effects_collated)
             if abs(target_delta) < abs(setup_best[1]):
                 setup_best = [setup, target_delta]
-                print(setup_best)
+                # print(setup_best)
 
-        # print(setup_best)
+        print(setup_best)
+
+
+@numba.njit
+def setup_delta(
+        setup: np.ndarray(shape=[6]),
+        target: np.ndarray(shape=[3]),
+        component_effects_collated
+):
+    setup_outcome = np.sum(
+        np.multiply(setup, component_effects_collated), 1)
+    return np.sum(np.subtract(setup_outcome, target))
 
 
 def cartesian(arrays_input, out=None):
@@ -121,13 +134,11 @@ def cartesian(arrays_input, out=None):
 
     """
 
-    arrays = [np.asarray(x) for x in arrays_input]
-    dtype = arrays[0].dtype
+    arrays = [x for x in arrays_input]
 
-    # n = np.prod([x.size for x in arrays])
-    n = np.asarray([x.size for x in arrays]).prod()
+    n = np.prod([x.size for x in arrays])
     if out is None:
-        out = np.zeros((n, len(arrays)), dtype=dtype)
+        out = np.zeros((n, len(arrays)))
 
     m = int(n / arrays[0].size)
     out[:, 0] = np.repeat(arrays[0], m)
@@ -146,3 +157,4 @@ if __name__ == '__main__':
     engineer.find_closest_setup(target_setup)
     elapsed = time.time() - st
     print(str(elapsed))
+
