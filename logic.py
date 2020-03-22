@@ -10,31 +10,57 @@ from lz4 import block
 
 class Component:
     def __init__(self, name: str, midpoint: float, breadth: float,
-                 gradations: float, effects: tuple):
+                 gradations: float, aspects: list):
         self.name = name
 
         min_value = midpoint - breadth
         max_value = midpoint + breadth
         self.settings = da.linspace(min_value, max_value, gradations)
 
-        assert len(effects) == 3
-        effects = (round(effect / 50, 5) for effect in effects)
-        self.effects = effects
+        self.settings_aspects = \
+            [self.settings * aspect / 50 for aspect in aspects]
 
 
-effect_names = ["Downforce", "Handling", "Speed"]
+aspect_names = ["Downforce", "Handling", "Speed"]
 
 
 components = [
-    Component("Front Wing", 15., 5., 0.1, (-6., 1., -1.5)),
-    Component("Rear Wing", 25., 5., 0.1, (-4., 1., -2.5)),
-    Component("Pressure", 21., 3., 0.6, (0., 2.5, -2.5)),
-    Component("Camber", -2., 2., 0.4, (0., -3.75, 3.75)),
-    Component("Suspension", 50., 50., 6.25, (0., -0.05, 0.6)),
-    Component("Gears", 50., 50., 6.25, (0., -0.6, 0.1))]
+    Component("Front Wing", 15., 5., 0.1, [-6., 1., -1.5]),
+    Component("Rear Wing", 25., 5., 0.1, [-4., 1., -2.5]),
+    Component("Pressure", 21., 3., 0.6, [0., 2.5, -2.5]),
+    Component("Camber", -2., 2., 0.4, [0., -3.75, 3.75]),
+    Component("Suspension", 50., 50., 6.25, [0., -0.05, 0.6]),
+    Component("Gears", 50., 50., 6.25, [0., -0.6, 0.1])]
 
 
-def optimum_setup():
+def optimum_setup(component_list: list, aspect_list: list,
+                  aspect_targets: list):
+    assert len(aspect_targets) == len(aspect_list)
+    assert all(isinstance(c, Component) for c in component_list)
+    assert all(
+        len(c.settings_aspects) == len(aspect_list) for c in component_list)
+    
+    deltas_by_aspect = []
+    for aspect_ix, aspect in enumerate(aspect_list):
+        settings_aspects_list = \
+            [c.settings_aspects[aspect_ix] for c in component_list]
+        aspect_values = da.outer(*settings_aspects_list)
+        deltas_by_aspect.append(aspect_values - aspect_targets[aspect_ix])
+
+    deltas_total = da.add(*deltas_by_aspect)
+    delta_min_ix = da.argmin(deltas_total)
+    delta_min_coord = da.unravel_index(
+        delta_min_ix, deltas_total.shape).compute()
+
+    optimum_settings = []
+    for component_ix, setting_ix in enumerate(delta_min_coord):
+        component = component_list[component_ix]
+        setting = component.settings[setting_ix]
+        optimum_settings.append(setting)
+    return optimum_settings
+
+
+def optimum_setup_():
     file_list = glob.glob(r"/home/ec2-user/python-practice/RaceSetups/*.sav")
     target_file = max(file_list, key=os.path.getctime)
 
