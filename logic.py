@@ -5,6 +5,7 @@ from pprint import pprint
 import struct
 
 from dask import array as da
+from numpy import float16
 
 from lz4 import block
 
@@ -16,7 +17,9 @@ class Component:
 
         min_value = midpoint - breadth
         max_value = midpoint + breadth
-        self.settings = da.linspace(min_value, max_value, gradations)
+        steps = int((2 * breadth) / gradations)
+        self.settings = da.linspace(min_value, max_value, steps,
+                                    dtype=float16)
 
         self.settings_aspects = \
             [self.settings * aspect / 50 for aspect in aspects]
@@ -31,13 +34,15 @@ def optimum_setup(component_list: list, aspect_targets: dict):
     for aspect_ix, aspect in enumerate(aspect_targets.keys()):
         settings_aspects_list = \
             [c.settings_aspects[aspect_ix] for c in component_list]
-        aspect_values = da.outer(*settings_aspects_list)
-        deltas_by_aspect.append(aspect_values - aspect_targets[aspect])
+        aspect_values_mesh = da.array(da.meshgrid(*settings_aspects_list))
+        aspect_values = da.sum(aspect_values_mesh, axis=0)
+        deltas_by_aspect.append(da.absolute(
+            aspect_values - aspect_targets[aspect]))
 
     deltas_total = da.add(*deltas_by_aspect)
     delta_min_ix = da.argmin(deltas_total)
-    delta_min_coord = da.unravel_index(
-        delta_min_ix, deltas_total.shape).compute()
+    delta_min_coord = da.unravel_index(delta_min_ix, deltas_total.shape)
+    delta_min_coord = [i.compute() for i in delta_min_coord]
 
     optimum_settings = []
     for component_ix, setting_ix in enumerate(delta_min_coord):
@@ -73,12 +78,13 @@ def extract_targets(file_path):
         return aspect_targets
 
 
-def __main__():
-    file_list = glob.glob(r"/home/ec2-user/python-practice/RaceSetups/*.sav")
-    target_file = max(file_list, key=os.path.getctime)
-    aspect_targets = extract_targets(target_file)
+if __name__ == "__main__":
+    aspect_targets = {"DF": 0.4, "H": 0.4, "S": 0.4}
+    # file_list = glob.glob(r"/home/ec2-user/python-practice/RaceSetups/*.sav")
+    # target_file = max(file_list, key=os.path.getctime)
+    # aspect_targets = extract_targets(target_file)
 
-    pprint("TARGET", aspect_targets)
+    pprint(["TARGET", aspect_targets])
 
     components = [
         Component("Front Wing", 15., 5., 0.1, [-6., 1., -1.5]),
@@ -93,4 +99,4 @@ def __main__():
     for component_ix, component in components:
         optimum_dict[component.name] = optimum_list[component_ix]
 
-    pprint("OPTIMUM", optimum_dict)
+    pprint(["OPTIMUM", optimum_dict])
