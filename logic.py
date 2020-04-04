@@ -42,12 +42,11 @@ def optimum_setup(component_list: list, aspect_targets: dict):
     deltas_total = da.add(*deltas_by_aspect)
     delta_min_ix = da.argmin(deltas_total)
     delta_min_coord = da.unravel_index(delta_min_ix, deltas_total.shape)
-    delta_min_coord = [i.compute() for i in delta_min_coord]
 
     optimum_settings = []
     for component_ix, setting_ix in enumerate(delta_min_coord):
         component = component_list[component_ix]
-        setting = component.settings[setting_ix]
+        setting = component.settings[setting_ix].compute()
         optimum_settings.append(setting)
     return optimum_settings
 
@@ -79,7 +78,7 @@ def extract_targets(file_path):
 
 
 if __name__ == "__main__":
-    aspect_targets = {"DF": 0.4, "H": 0.4, "S": 0.4}
+    aspect_targets = {"DF": 0.5, "H": 0.5, "S": 0.5}
     # file_list = glob.glob(r"/home/ec2-user/python-practice/RaceSetups/*.sav")
     # target_file = max(file_list, key=os.path.getctime)
     # aspect_targets = extract_targets(target_file)
@@ -96,7 +95,7 @@ if __name__ == "__main__":
 
     optimum_list = optimum_setup(components, aspect_targets)
     optimum_dict = {}
-    for component_ix, component in components:
+    for component_ix, component in enumerate(components):
         optimum_dict[component.name] = optimum_list[component_ix]
 
-    pprint(["OPTIMUM", optimum_dict])
+    print(["OPTIMUM", optimum_dict])
