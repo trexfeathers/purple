@@ -14,42 +14,67 @@ class Component:
     def __init__(self, name: str, midpoint: float, breadth: float,
                  gradations: float, aspects: list):
         self.name = name
+        self.midpoint = midpoint
+        self.aspects = aspects
 
-        min_value = midpoint - breadth
-        max_value = midpoint + breadth
-        steps = int((2 * breadth) / gradations)
-        self.settings = da.linspace(min_value, max_value, steps,
-                                    dtype=float16)
+        self.min_value = midpoint - breadth
+        self.max_value = midpoint + breadth
+        self.steps_max = int((2 * breadth) / gradations) + 1
 
-        self.settings_aspects = \
-            [self.settings * aspect / 50 for aspect in aspects]
+    def generate_settings(self, decimation: int):
+        decimation = min(decimation, self.steps_max)
+        settings = da.linspace(self.min_value, self.max_value, self.steps_max,
+                               dtype=float16)
+        settings = settings[::int(decimation)]
+        settings_aspects = [(settings - self.midpoint) * aspect / 50 for
+                            aspect in self.aspects]
+
+        return settings, settings_aspects
+
+
+class DecimatedComponent:
+    def __init__(self, Component, decimation):
+        self.name = Component.name
+        self.settings, self.settings_aspects = \
+            Component.generate_settings(decimation)
 
 
 def optimum_setup(component_list: list, aspect_targets: dict):
+    def decimated_optimum(decimated_component_list: list):
+        assert all(
+            isinstance(d, DecimatedComponent) for d in decimated_component_list)
+
+        deltas_by_aspect = []
+        for aspect_ix, aspect in enumerate(aspect_targets.keys()):
+            settings_aspects_list = [
+                d.settings_aspects[aspect_ix] for d in decimated_component_list]
+            aspect_values_mesh = da.array(da.meshgrid(*settings_aspects_list))
+            aspect_values = da.sum(aspect_values_mesh, axis=0)
+            deltas_by_aspect.append(da.absolute(
+                aspect_values - aspect_targets[aspect]))
+
+        deltas_total = da.add(*deltas_by_aspect)
+        print(f"combinations: {deltas_total.size} ...")
+        delta_min_ix = da.argmin(deltas_total)
+        delta_min_coord = da.unravel_index(delta_min_ix, deltas_total.shape)
+
+        optimum_dict = {}
+        for component_ix, setting_ix in enumerate(delta_min_coord):
+            component = decimated_component_list[component_ix]
+            setting = component.settings[setting_ix].compute()
+            optimum_dict[component.name] = setting
+        print(optimum_dict)
+
     assert all(isinstance(c, Component) for c in component_list)
     assert all(
-        len(c.settings_aspects) == len(aspect_targets) for c in component_list)
-    
-    deltas_by_aspect = []
-    for aspect_ix, aspect in enumerate(aspect_targets.keys()):
-        settings_aspects_list = \
-            [c.settings_aspects[aspect_ix] for c in component_list]
-        aspect_values_mesh = da.array(da.meshgrid(*settings_aspects_list))
-        aspect_values = da.sum(aspect_values_mesh, axis=0)
-        deltas_by_aspect.append(da.absolute(
-            aspect_values - aspect_targets[aspect]))
+        len(c.aspects) == len(aspect_targets) for c in component_list)
 
-    deltas_total = da.add(*deltas_by_aspect)
-    delta_min_ix = da.argmin(deltas_total)
-    delta_min_coord = da.unravel_index(delta_min_ix, deltas_total.shape)
-
-    optimum_settings = []
-    for component_ix, setting_ix in enumerate(delta_min_coord):
-        component = component_list[component_ix]
-        setting = component.settings[setting_ix].compute()
-        optimum_settings.append(setting)
-    return optimum_settings
-
+    decimation = 64
+    while decimation >= 1:
+        decimated_component_list =\
+            [DecimatedComponent(c, decimation) for c in component_list]
+        decimated_optimum(decimated_component_list)
+        decimation /= 2
 
 def extract_targets(file_path):
     with open(file_path, "rb") as f:
@@ -78,7 +103,7 @@ def extract_targets(file_path):
 
 
 if __name__ == "__main__":
-    aspect_targets = {"DF": 0.5, "H": 0.5, "S": 0.5}
+    aspect_targets = {"DF": 0.0, "H": 0.0, "S": 0.0}
     # file_list = glob.glob(r"/home/ec2-user/python-practice/RaceSetups/*.sav")
     # target_file = max(file_list, key=os.path.getctime)
     # aspect_targets = extract_targets(target_file)
@@ -93,9 +118,4 @@ if __name__ == "__main__":
         Component("Suspension", 50., 50., 6.25, [0., -0.05, 0.6]),
         Component("Gears", 50., 50., 6.25, [0., -0.6, 0.1])]
 
-    optimum_list = optimum_setup(components, aspect_targets)
-    optimum_dict = {}
-    for component_ix, component in enumerate(components):
-        optimum_dict[component.name] = optimum_list[component_ix]
-
-    print(["OPTIMUM", optimum_dict])
+    optimum_setup(components, aspect_targets)
