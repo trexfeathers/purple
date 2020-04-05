@@ -15,17 +15,21 @@ class Component:
                  gradations: float, aspects: list):
         self.name = name
         self.midpoint = midpoint
+        self.gradations = gradations
         self.aspects = aspects
 
         self.min_value = midpoint - breadth
         self.max_value = midpoint + breadth
         self.steps_max = int((2 * breadth) / gradations) + 1
 
-    def generate_settings(self, decimation: int):
-        decimation = min(decimation, self.steps_max)
-        settings = da.linspace(self.min_value, self.max_value, self.steps_max,
-                               dtype=float16)
-        settings = settings[::int(decimation)]
+    def generate_settings(self, steps: int):
+        steps = min(steps, self.steps_max)
+        settings = da.linspace(self.min_value, self.max_value, steps)
+        # Hack around the upcoming floating point problem.
+        settings = settings + (self.gradations / 2)
+        # Round down to the nearest gradation.
+        settings = da.array(settings - (settings % self.gradations),
+                            dtype=float16)
         settings_aspects = [(settings - self.midpoint) * aspect / 50 for
                             aspect in self.aspects]
 
@@ -33,10 +37,10 @@ class Component:
 
 
 class DecimatedComponent:
-    def __init__(self, Component, decimation):
-        self.name = Component.name
+    def __init__(self, component, steps):
+        self.name = component.name
         self.settings, self.settings_aspects = \
-            Component.generate_settings(decimation)
+            component.generate_settings(steps)
 
 
 def optimum_setup(component_list: list, aspect_targets: dict):
@@ -69,12 +73,14 @@ def optimum_setup(component_list: list, aspect_targets: dict):
     assert all(
         len(c.aspects) == len(aspect_targets) for c in component_list)
 
-    decimation = 64
-    while decimation >= 1:
+    steps_most = max(c.steps_max for c in component_list)
+    steps = 3
+    while steps <= steps_most:
         decimated_component_list =\
-            [DecimatedComponent(c, decimation) for c in component_list]
+            [DecimatedComponent(c, steps) for c in component_list]
         decimated_optimum(decimated_component_list)
-        decimation /= 2
+        steps *= 2
+
 
 def extract_targets(file_path):
     with open(file_path, "rb") as f:
