@@ -6,56 +6,56 @@
 #   Each item therein denotes the percentage effect on each aspect of increasing the component from min to max.
 
 Front Wing:
-  - settings:
-    - min: 10.
-    - max: 20.
-    - increments: 0.1
-  - aspect_effects:
-    - Downforce: -60
-    - Handling: 10
-    - Speed: -15
+  settings:
+    min: 10.
+    max: 20.
+    increments: .1
+  aspect_effects:
+    aerodynamics: -60
+    handling: 10
+    speedBalance: -15
 Rear Wing:
-  - settings:
-    - min: 20.
-    - max: 30.
-    - increments: 0.1
-  - aspect_effects:
-    - Downforce: -40
-    - Handling: 10
-    - Speed: -25
+  settings:
+    min: 20.
+    max: 30.
+    increments: .1
+  aspect_effects:
+    aerodynamics: -40
+    handling: 10
+    speedBalance: -25
 Pressure:
-  - settings:
-      - min: 18.
-      - max: 24.
-      - increments: 0.6
-  - aspect_effects:
-      - Downforce: 0
-      - Handling: 5
-      - Speed: -5
+  settings:
+      min: 18.
+      max: 24.
+      increments: 0.6
+  aspect_effects:
+      aerodynamics: 0
+      handling: 5
+      speedBalance: -5
 Camber:
-  - settings:
-      - min: -4.
-      - max: 0.
-      - increments: 0.4
-  - aspect_effects:
-      - Downforce: 0
-      - Handling: -15
-      - Speed: 15
+  settings:
+      min: -4.
+      max: 0.
+      increments: 0.4
+  aspect_effects:
+      aerodynamics: 0
+      handling: -15
+      speedBalance: 15
 Gearing:
-  - settings:
-      - min: 0.
-      - max: 100.
-      - increments: 6.25
-  - aspect_effects:
-      - Downforce: 0
-      - Handling: -5
-      - Speed: 60
+  settings:
+      min: 0.
+      max: 100.
+      increments: 6.25
+  aspect_effects:
+      aerodynamics: 0
+      handling: -5
+      speedBalance: 60
 Suspension:
-  - settings:
-      - min: 0.
-      - max: 100.
-      - increments: 6.25
-  - aspect_effects:
-      - Downforce: 0.
-      - Handling: -60
-      - Speed: 10
+  settings:
+      min: 0.
+      max: 100.
+      increments: 6.25
+  aspect_effects:
+      aerodynamics: 0.
+      handling: -60
+      speedBalance: 10

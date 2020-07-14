@@ -1,127 +1,132 @@
-import glob
-import json
-import os
-from pprint import pprint
-import struct
+"""
+A module for finding the closest-to-perfect setup in the Motorsport Manager
+strategy game.
 
-from dask import array as da
-from numpy import float16
+Extracts the targets from the latest saved setup file, then compares to the
+full array of possible setups.
+"""
+
+from json import loads as json_loads
+from pathlib import Path
+from struct import unpack
+from yaml import load as yaml_load, FullLoader
 
 from lz4 import block
+from numpy import float16, linspace, median, unravel_index
+from xarray import DataArray, Dataset
+
+from os.path import getmtime
 
 
-class Component:
-    def __init__(self, name: str, midpoint: float, breadth: float,
-                 gradations: float, aspects: list):
-        self.name = name
-        self.midpoint = midpoint
-        self.gradations = gradations
-        self.aspects = aspects
+def parse_components(yaml_path: Path):
+    """Extract component configurations from a YAML file."""
+    with open(yaml_path) as file:
+        content = yaml_load(file, Loader=FullLoader)
 
-        self.min_value = midpoint - breadth
-        self.max_value = midpoint + breadth
-        self.steps_max = int((2 * breadth) / gradations) + 1
+    component_list = []
+    for name, info in content.items():
+        settings = info["settings"]
+        component_list.append(component(name=name,
+                                        min=settings["min"],
+                                        max=settings["max"],
+                                        increments=settings["increments"],
+                                        aspect_effects=info["aspect_effects"]))
 
-    def generate_settings(self, steps: int):
-        steps = min(steps, self.steps_max)
-        settings = da.linspace(self.min_value, self.max_value, steps)
-        # Hack around the upcoming floating point problem.
-        settings = settings + (self.gradations / 2)
-        # Round down to the nearest gradation.
-        settings = da.array(settings - (settings % self.gradations),
-                            dtype=float16)
-        settings_aspects = [(settings - self.midpoint) * aspect / 50 for
-                            aspect in self.aspects]
-
-        return settings, settings_aspects
+    return component_list
 
 
-class DecimatedComponent:
-    def __init__(self, component, steps):
-        self.name = component.name
-        self.settings, self.settings_aspects = \
-            component.generate_settings(steps)
+def component(name: str, min: float, max: float,
+              increments: float, aspect_effects: dict):
+    """Generate an xarray Dataset of a component's settings and effects."""
+    num_steps = int((max - min) / increments) + 1
+    assert num_steps % 2 == 1, f"Settings must include a midpoint. For " \
+                               f"{name} got {num_steps} steps " \
+                               f"(even - no midpoint)."
+    settings = linspace(min, max, num_steps, dtype=float16)
+    midpoint = median(settings)
+
+    aspect_dict = {}
+    for aspect, effect in aspect_effects.items():
+        # Convert effect to effect-per-unit change.
+        effect = effect / (max - min)
+        # Convert effect from % to a scale of -1.0 to +1.0.
+        effect /= 50
+
+        # Corresponding aspect value for each setting value.
+        aspect_array = (settings - midpoint) * effect
+
+        aspect_dict[aspect] = DataArray(name=aspect,
+                                        data=aspect_array,
+                                        dims=name,
+                                        coords={name: settings})
+
+    # Combine the DataArrays for each aspect into a single dataset.
+    return Dataset(aspect_dict)
 
 
 def optimum_setup(component_list: list, aspect_targets: dict):
-    def decimated_optimum(decimated_component_list: list):
-        assert all(
-            isinstance(d, DecimatedComponent) for d in decimated_component_list)
+    """
+    Generate all possible setups from a list of components, compare each
+    to the target outcomes, print out the best setup.
+    """
+    assert all(isinstance(component, Dataset) for component in component_list)
+    # Ensure all aspect keys are identical.
+    assert all(component.data_vars.keys() == aspect_targets.keys()
+               for component in component_list)
 
-        deltas_by_aspect = []
-        for aspect_ix, aspect in enumerate(aspect_targets.keys()):
-            settings_aspects_list = [
-                d.settings_aspects[aspect_ix] for d in decimated_component_list]
-            aspect_values_mesh = da.array(da.meshgrid(*settings_aspects_list))
-            aspect_values = da.sum(aspect_values_mesh, axis=0)
-            deltas_by_aspect.append(da.absolute(
-                aspect_values - aspect_targets[aspect]))
+    print("TARGET: ", aspect_targets)
 
-        deltas_total = da.add(*deltas_by_aspect)
-        print(f"combinations: {deltas_total.size} ...")
-        delta_min_ix = da.argmin(deltas_total)
-        delta_min_coord = da.unravel_index(delta_min_ix, deltas_total.shape)
+    # Use chunk to convert to lazy arrays - a large computation is upcoming.
+    setups_by_aspect = sum(component_list).chunk("auto")
+    for aspect, target in aspect_targets.items():
+        setups_by_aspect[aspect] = abs(setups_by_aspect[aspect] - target)
+    setups_overall = setups_by_aspect.to_array(dim="delta").sum("delta")
 
-        optimum_dict = {}
-        for component_ix, setting_ix in enumerate(delta_min_coord):
-            component = decimated_component_list[component_ix]
-            setting = component.settings[setting_ix].compute()
-            optimum_dict[component.name] = setting
-        print(optimum_dict)
+    optimum_index = setups_overall.argmin().data.compute()
+    optimum_address = unravel_index(optimum_index, setups_overall.shape)
+    optimum_setup = setups_overall[optimum_address]
 
-    assert all(isinstance(c, Component) for c in component_list)
-    assert all(
-        len(c.aspects) == len(aspect_targets) for c in component_list)
-
-    steps_most = max(c.steps_max for c in component_list)
-    steps = 3
-    while steps <= steps_most:
-        decimated_component_list =\
-            [DecimatedComponent(c, steps) for c in component_list]
-        decimated_optimum(decimated_component_list)
-        steps *= 2
+    print(optimum_setup.coords)
 
 
 def extract_targets(file_path):
+    """Extract the targets from a specified saved setup file."""
     with open(file_path, "rb") as f:
-        data_length_decoded = struct.unpack("i", f.read(4))[0]
+        stepforward = unpack("i",f.read(4))[0];
+        dataLengthEncoded = unpack("i",f.read(4))[0];
+        data_length_decoded = unpack("i", f.read(4))[0]
 
         data_decompressed = block.decompress(
             f.read(),
             uncompressed_size=data_length_decoded
         )
-        data_decoded = json.loads(data_decompressed.decode("utf-8", "ignore"))
-        setup_stint_data = data_decoded["mSetupStintData"]
-        setup_output = setup_stint_data["mSetupOutput"]
 
-        aspect_targets = dict.fromkeys(setup_output.keys())
-        for aspect in aspect_targets.keys():
-            if aspect == "speedBalance":
-                # Hack fix for source mistake.
-                delta_lookup = "SpeedBalance"
-            else:
-                delta_lookup = aspect
-            delta_lookup = f"mDelta{delta_lookup}"
-            target = setup_stint_data[delta_lookup] - setup_output[aspect]
-            aspect_targets[aspect] = target
+    data_decoded = json_loads(data_decompressed.decode("utf-8", "ignore"))
+    setup_stint_data = data_decoded["mSetupStintData"]
+    setup_output = setup_stint_data["mSetupOutput"]
 
-        return aspect_targets
+    aspect_targets = dict.fromkeys(setup_output.keys())
+    aspect_targets.pop("$version")
+    for aspect in aspect_targets.keys():
+        if aspect == "speedBalance":
+            # Hack fix for source mistake.
+            delta_lookup = "SpeedBalance"
+        else:
+            delta_lookup = aspect.title()
+        delta_lookup = f"mDelta{delta_lookup}"
+        target = setup_stint_data[delta_lookup] - setup_output[aspect]
+        aspect_targets[aspect] = target
+
+    return aspect_targets
 
 
 if __name__ == "__main__":
-    aspect_targets = {"DF": 0.0, "H": 0.0, "S": 0.0}
-    # file_list = glob.glob(r"/home/ec2-user/python-practice/RaceSetups/*.sav")
-    # target_file = max(file_list, key=os.path.getctime)
-    # aspect_targets = extract_targets(target_file)
+    components = parse_components("components.yml")
 
-    pprint(["TARGET", aspect_targets])
-
-    components = [
-        Component("Front Wing", 15., 5., 0.1, [-6., 1., -1.5]),
-        Component("Rear Wing", 25., 5., 0.1, [-4., 1., -2.5]),
-        Component("Pressure", 21., 3., 0.6, [0., 2.5, -2.5]),
-        Component("Camber", -2., 2., 0.4, [0., -3.75, 3.75]),
-        Component("Suspension", 50., 50., 6.25, [0., -0.05, 0.6]),
-        Component("Gears", 50., 50., 6.25, [0., -0.6, 0.1])]
+    setups_path = Path.home().joinpath("AppData", "LocalLow", "Playsport Games",
+                                       "Motorsport Manager", "Cloud", "RaceSetups")
+    file_list = setups_path.glob("*.sav")
+    target_file = max(file_list, key=getmtime)
+    aspect_targets = extract_targets(target_file)
 
     optimum_setup(components, aspect_targets)
