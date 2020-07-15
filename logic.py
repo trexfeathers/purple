@@ -120,7 +120,7 @@ def extract_targets(file_path):
     return aspect_targets
 
 
-if __name__ == "__main__":
+def main():
     components = parse_components("components.yml")
 
     setups_path = Path.home().joinpath("AppData", "LocalLow", "Playsport Games",
@@ -130,3 +130,7 @@ if __name__ == "__main__":
     aspect_targets = extract_targets(target_file)
 
     optimum_setup(components, aspect_targets)
+
+
+if __name__ == "__main__":
+    main()
