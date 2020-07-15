@@ -27,9 +27,9 @@ def parse_components(yaml_path: Path):
                   increments: float, aspect_effects: dict):
         """Generate an xarray Dataset of a component's settings and effects."""
         num_steps = int((max - min) / increments) + 1
-        assert num_steps % 2 == 1, f"Settings must include a midpoint. For " \
-                                   f"{name} got {num_steps} steps " \
-                                   f"(even - no midpoint)."
+        assert_msg = f"Settings must include a midpoint. For {name} got " \
+                     f"{num_steps} steps (is even - no midpoint)."
+        assert num_steps % 2 == 1, assert_msg
         settings = linspace(min, max, num_steps, dtype=float16)
         midpoint = median(settings)
 
@@ -64,8 +64,9 @@ def parse_components(yaml_path: Path):
                                         aspect_effects=info["aspect_effects"]))
 
     # Ensure all aspect keys are identical.
+    assert_msg = "Inconsistent aspect names across components."
     assert all(component.data_vars.keys() == component_list[0].data_vars.keys()
-               for component in component_list)
+               for component in component_list), assert_msg
 
     # Combine component_list into a Dataset of all possible setups.
     # Use chunk to convert to lazy arrays - a large computation is upcoming.
@@ -78,8 +79,13 @@ def optimum_setup(setups_by_aspect: Dataset, aspect_targets: dict):
     """
     Compare every setup to the target outcomes, print out the best setup.
     """
-    assert isinstance(setups_by_aspect, Dataset)
-    assert aspect_targets.keys() == setups_by_aspect.data_vars.keys()
+    assert_msg = f"Incorrect type for setups_by_aspect: expected xarray " \
+                 f"Dataset, got {type(setups_by_aspect)}."
+    assert isinstance(setups_by_aspect, Dataset), assert_msg
+
+    assert_msg = f"Inconsistent aspects between aspect_targets and setups_by_aspect: " \
+                 f"{aspect_targets.keys()} != {setups_by_aspect.data_vars.keys()}."
+    assert aspect_targets.keys() == setups_by_aspect.data_vars.keys(), assert_msg
 
     print("TARGET: ", aspect_targets)
 
