@@ -115,7 +115,7 @@ def extract_targets(file_path):
             delta_lookup = aspect.title()
         delta_lookup = f"mDelta{delta_lookup}"
         target = setup_stint_data[delta_lookup] - setup_output[aspect]
-        aspect_targets[aspect] = target
+        aspect_targets[aspect] = float16(target)
 
     return aspect_targets
 
