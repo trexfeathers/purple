@@ -14,7 +14,7 @@ from struct import unpack
 from yaml import load as yaml_load, FullLoader
 
 from lz4 import block
-from numpy import float16, linspace, median, unravel_index
+from numpy import float16, linspace, median, prod, unravel_index
 from xarray import DataArray, Dataset
 
 from watchdog.events import FileSystemEventHandler
@@ -87,21 +87,30 @@ def optimum_setup(setups_by_aspect: Dataset, aspect_targets: dict):
                  f"{aspect_targets.keys()} != {setups_by_aspect.data_vars.keys()}."
     assert aspect_targets.keys() == setups_by_aspect.data_vars.keys(), assert_msg
 
-    print("TARGET: ", aspect_targets)
+    # Print target in similar format to xarray coords.
+    col_width = max(len(key) for key in aspect_targets.keys()) + 2  # padding
+    aspect_targets_str = ["".join([aspect.ljust(col_width), str(target)])
+                          for aspect, target in aspect_targets.items()]
+    print("\n\t".join(["TARGET:", *aspect_targets_str]))
 
     for aspect, target in aspect_targets.items():
         setups_by_aspect[aspect] = abs(setups_by_aspect[aspect] - target)
     setups_overall = setups_by_aspect.to_array(dim="delta").sum("delta")
 
+    print(f"{prod(setups_overall.shape):,} setup combinations. "
+          f"Analysing against target ...")
     optimum_index = setups_overall.argmin().data.compute()
     optimum_address = unravel_index(optimum_index, setups_overall.shape)
     optimum_setup = setups_overall[optimum_address]
 
-    print(optimum_setup.coords)
+    output = str(optimum_setup.coords).replace("Coordinates", "OPTIMUM")
+    print(output)
 
 
-def extract_targets(file_path):
+def extract_targets(file_path: Path):
     """Extract the targets from a specified saved setup file."""
+    print(f"Reading '{file_path.name}' ...")
+
     with open(file_path, "rb") as f:
         stepforward = unpack("i",f.read(4))[0]
         dataLengthEncoded = unpack("i",f.read(4))[0]
@@ -146,7 +155,7 @@ class _NewSetupHandler(FileSystemEventHandler):
     def on_created(self, event):
         source_path = Path(event.src_path)
         if source_path.suffix == ".sav":
-            print(f"\nAnalysing {source_path.name}...")
+            print("\n")
             # Wait for the file to be released.
             sleep(1)
             aspect_targets = extract_targets(source_path)
@@ -155,7 +164,7 @@ class _NewSetupHandler(FileSystemEventHandler):
 
 def main():
     """Set up a watchdog observer to analyse any new setups that come in."""
-    print("Setting up...")
+    print("Setting up ...")
     setups_by_aspect = parse_components("components.yml")
     print("Components loaded.")
 
