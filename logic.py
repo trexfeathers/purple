@@ -7,6 +7,7 @@ full array of possible setups.
 """
 
 from json import loads as json_loads
+from time import sleep
 from pathlib import Path
 from struct import unpack
 from yaml import load as yaml_load, FullLoader
@@ -15,11 +16,40 @@ from lz4 import block
 from numpy import float16, linspace, median, unravel_index
 from xarray import DataArray, Dataset
 
-from os.path import getmtime
+from watchdog.events import FileSystemEventHandler
+from watchdog.observers import Observer
 
 
 def parse_components(yaml_path: Path):
-    """Extract component configurations from a YAML file."""
+    """Generate setups using component configurations from a YAML file."""
+    def component(name: str, min: float, max: float,
+                  increments: float, aspect_effects: dict):
+        """Generate an xarray Dataset of a component's settings and effects."""
+        num_steps = int((max - min) / increments) + 1
+        assert num_steps % 2 == 1, f"Settings must include a midpoint. For " \
+                                   f"{name} got {num_steps} steps " \
+                                   f"(even - no midpoint)."
+        settings = linspace(min, max, num_steps, dtype=float16)
+        midpoint = median(settings)
+
+        aspect_dict = {}
+        for aspect, effect in aspect_effects.items():
+            # Convert effect to effect-per-unit change.
+            effect = effect / (max - min)
+            # Convert effect from % to a scale of -1.0 to +1.0.
+            effect /= 50
+
+            # Corresponding aspect value for each setting value.
+            aspect_array = (settings - midpoint) * effect
+
+            aspect_dict[aspect] = DataArray(name=aspect,
+                                            data=aspect_array,
+                                            dims=name,
+                                            coords={name: settings})
+
+        # Combine the DataArrays for each aspect into a single dataset.
+        return Dataset(aspect_dict)
+
     with open(yaml_path) as file:
         content = yaml_load(file, Loader=FullLoader)
 
@@ -32,52 +62,26 @@ def parse_components(yaml_path: Path):
                                         increments=settings["increments"],
                                         aspect_effects=info["aspect_effects"]))
 
-    return component_list
-
-
-def component(name: str, min: float, max: float,
-              increments: float, aspect_effects: dict):
-    """Generate an xarray Dataset of a component's settings and effects."""
-    num_steps = int((max - min) / increments) + 1
-    assert num_steps % 2 == 1, f"Settings must include a midpoint. For " \
-                               f"{name} got {num_steps} steps " \
-                               f"(even - no midpoint)."
-    settings = linspace(min, max, num_steps, dtype=float16)
-    midpoint = median(settings)
-
-    aspect_dict = {}
-    for aspect, effect in aspect_effects.items():
-        # Convert effect to effect-per-unit change.
-        effect = effect / (max - min)
-        # Convert effect from % to a scale of -1.0 to +1.0.
-        effect /= 50
-
-        # Corresponding aspect value for each setting value.
-        aspect_array = (settings - midpoint) * effect
-
-        aspect_dict[aspect] = DataArray(name=aspect,
-                                        data=aspect_array,
-                                        dims=name,
-                                        coords={name: settings})
-
-    # Combine the DataArrays for each aspect into a single dataset.
-    return Dataset(aspect_dict)
-
-
-def optimum_setup(component_list: list, aspect_targets: dict):
-    """
-    Generate all possible setups from a list of components, compare each
-    to the target outcomes, print out the best setup.
-    """
-    assert all(isinstance(component, Dataset) for component in component_list)
     # Ensure all aspect keys are identical.
-    assert all(component.data_vars.keys() == aspect_targets.keys()
+    assert all(component.data_vars.keys() == component_list[0].data_vars.keys()
                for component in component_list)
+
+    # Combine component_list into a Dataset of all possible setups.
+    # Use chunk to convert to lazy arrays - a large computation is upcoming.
+    setups_by_aspect = sum(component_list).chunk("auto")
+
+    return setups_by_aspect
+
+
+def optimum_setup(setups_by_aspect: Dataset, aspect_targets: dict):
+    """
+    Compare every setup to the target outcomes, print out the best setup.
+    """
+    assert isinstance(setups_by_aspect, Dataset)
+    assert aspect_targets.keys() == setups_by_aspect.data_vars.keys()
 
     print("TARGET: ", aspect_targets)
 
-    # Use chunk to convert to lazy arrays - a large computation is upcoming.
-    setups_by_aspect = sum(component_list).chunk("auto")
     for aspect, target in aspect_targets.items():
         setups_by_aspect[aspect] = abs(setups_by_aspect[aspect] - target)
     setups_overall = setups_by_aspect.to_array(dim="delta").sum("delta")
@@ -120,16 +124,43 @@ def extract_targets(file_path):
     return aspect_targets
 
 
+class _NewSetupHandler(FileSystemEventHandler):
+    """Watchdog event handler to analyse new setup files when they land."""
+    def __init__(self, setups_by_aspect):
+        self.setups_by_aspect = setups_by_aspect
+        super().__init__()
+
+    def on_created(self, event):
+        source_path = Path(event.src_path)
+        if source_path.suffix == ".sav":
+            print(f"Analysing {source_path.name}...")
+            # Wait for the file to be released.
+            sleep(1)
+            aspect_targets = extract_targets(source_path)
+            optimum_setup(self.setups_by_aspect, aspect_targets)
+
+
 def main():
-    components = parse_components("components.yml")
+    """Set up a watchdog observer to analyse any new setups that come in."""
+    setups_by_aspect = parse_components("components.yml")
+    print("Components loaded.")
 
     setups_path = Path.home().joinpath("AppData", "LocalLow", "Playsport Games",
                                        "Motorsport Manager", "Cloud", "RaceSetups")
-    file_list = setups_path.glob("*.sav")
-    target_file = max(file_list, key=getmtime)
-    aspect_targets = extract_targets(target_file)
 
-    optimum_setup(components, aspect_targets)
+    handler = _NewSetupHandler(setups_by_aspect)
+    observer = Observer()
+    observer.schedule(handler, setups_path)
+
+    print(f"Watching {setups_path}")
+    observer.start()
+    try:
+        while observer.is_alive():
+            # sleep(1)
+            observer.join(1)
+    except KeyboardInterrupt:
+        observer.stop()
+    observer.join()
 
 
 if __name__ == "__main__":
