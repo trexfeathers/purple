@@ -11,51 +11,51 @@ Front Wing:
     max: 20.
     increments: .1
   aspect_effects:
-    aerodynamics: -60
-    handling: 10
-    speedBalance: -15
+    Downforce: -60
+    Handling: 10
+    Speed Balance: -15
 Rear Wing:
   settings:
     min: 20.
     max: 30.
     increments: .1
   aspect_effects:
-    aerodynamics: -40
-    handling: 10
-    speedBalance: -25
+    Downforce: -40
+    Handling: 10
+    Speed Balance: -25
 Pressure:
   settings:
       min: 18.
       max: 24.
       increments: 0.6
   aspect_effects:
-      aerodynamics: 0
-      handling: 5
-      speedBalance: -5
+      Downforce: 0
+      Handling: 5
+      Speed Balance: -5
 Camber:
   settings:
       min: -4.
       max: 0.
       increments: 0.4
   aspect_effects:
-      aerodynamics: 0
-      handling: -15
-      speedBalance: 15
+      Downforce: 0
+      Handling: -15
+      Speed Balance: 15
 Gearing:
   settings:
       min: 0.
       max: 100.
       increments: 6.25
   aspect_effects:
-      aerodynamics: 0
-      handling: -5
-      speedBalance: 60
+      Downforce: 0
+      Handling: -5
+      Speed Balance: 60
 Suspension:
   settings:
       min: 0.
       max: 100.
       increments: 6.25
   aspect_effects:
-      aerodynamics: 0.
-      handling: -60
-      speedBalance: 10
+      Downforce: 0.
+      Handling: -60
+      Speed Balance: 10

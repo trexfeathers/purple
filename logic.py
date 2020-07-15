@@ -6,6 +6,7 @@ Extracts the targets from the latest saved setup file, then compares to the
 full array of possible setups.
 """
 
+from collections import namedtuple
 from json import loads as json_loads
 from time import sleep
 from pathlib import Path
@@ -96,8 +97,8 @@ def optimum_setup(setups_by_aspect: Dataset, aspect_targets: dict):
 def extract_targets(file_path):
     """Extract the targets from a specified saved setup file."""
     with open(file_path, "rb") as f:
-        stepforward = unpack("i",f.read(4))[0];
-        dataLengthEncoded = unpack("i",f.read(4))[0];
+        stepforward = unpack("i",f.read(4))[0]
+        dataLengthEncoded = unpack("i",f.read(4))[0]
         data_length_decoded = unpack("i", f.read(4))[0]
 
         data_decompressed = block.decompress(
@@ -107,19 +108,25 @@ def extract_targets(file_path):
 
     data_decoded = json_loads(data_decompressed.decode("utf-8", "ignore"))
     setup_stint_data = data_decoded["mSetupStintData"]
+    setup_deltas = {k.replace("mDelta", ""): v
+                    for k, v in setup_stint_data.items() if k.startswith("mDelta")}
     setup_output = setup_stint_data["mSetupOutput"]
 
-    aspect_targets = dict.fromkeys(setup_output.keys())
-    aspect_targets.pop("$version")
-    for aspect in aspect_targets.keys():
-        if aspect == "speedBalance":
-            # Hack fix for source mistake.
-            delta_lookup = "SpeedBalance"
-        else:
-            delta_lookup = aspect.title()
-        delta_lookup = f"mDelta{delta_lookup}"
-        target = setup_stint_data[delta_lookup] - setup_output[aspect]
-        aspect_targets[aspect] = float16(target)
+    # Aspects have different names in different places.
+    # Map the different names, anchored to the names in setup_deltas.
+    alt_names = namedtuple("AspectAlternativeNames", ("gui", "setup_output"))
+    delta_name_mapping = {
+        "Aerodynamics": alt_names("Downforce", "aerodynamics"),
+        "Handling": alt_names("Handling", "handling"),
+        "SpeedBalance": alt_names("Speed Balance", "speedBalance")}
+
+    # Use the name handling above to get the relevant values from dictionaries
+    # and determine the target.
+    aspect_targets = {}
+    for aspect, delta in setup_deltas.items():
+        aspect_names = delta_name_mapping[aspect]
+        target = delta - setup_output[aspect_names.setup_output]
+        aspect_targets[aspect_names.gui] = target
 
     return aspect_targets
 
@@ -133,7 +140,7 @@ class _NewSetupHandler(FileSystemEventHandler):
     def on_created(self, event):
         source_path = Path(event.src_path)
         if source_path.suffix == ".sav":
-            print(f"Analysing {source_path.name}...")
+            print(f"\nAnalysing {source_path.name}...")
             # Wait for the file to be released.
             sleep(1)
             aspect_targets = extract_targets(source_path)
@@ -142,6 +149,7 @@ class _NewSetupHandler(FileSystemEventHandler):
 
 def main():
     """Set up a watchdog observer to analyse any new setups that come in."""
+    print("Setting up...")
     setups_by_aspect = parse_components("components.yml")
     print("Components loaded.")
 
