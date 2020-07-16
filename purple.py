@@ -1,9 +1,19 @@
 """
-A module for finding the closest-to-perfect setup in the Motorsport Manager
-strategy game.
+Module for finding the closest-to-perfect setup in the
+`Motorsport Manager <http://www.motorsportmanager.com/>`_ strategy game.
 
 Extracts the targets from the latest saved setup file, then compares to the
 full array of possible setups.
+
+Key concepts
+************
+* Aspect: a value between -1 and 1 that has a target value per driver per race
+  weekend. There are several aspects of a setup - the challenge is to
+  simultaneously get every aspect close to its target value.
+
+* Component: an array of settings with a corresponding impact on each
+  **aspect**. There are several components to adjust, each with varying and
+  conflicting impacts on the setup **aspects**.
 """
 
 from collections import namedtuple
@@ -21,11 +31,28 @@ from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
 
-def parse_components(yaml_path: Path):
-    """Generate setups using component configurations from a YAML file."""
+def parse_components(yaml_path: Path) -> Dataset:
+    """
+    Generate setups using component configurations from a YAML file.
+
+    :param yaml_path: location of the YAML file containing component info.
+    :return: xarray Dataset containing settings for each component
+    (coordinates) and their effects on aspects (data_vars).
+    """
     def component(name: str, min: float, max: float,
-                  increments: float, aspect_effects: dict):
-        """Generate an xarray Dataset of a component's settings and effects."""
+                  increments: float, aspect_effects: dict) -> Dataset:
+        """
+        Generate an xarray Dataset of a component's settings and effects.
+
+        :param name: component name.
+        :param min: minimum setting for component.
+        :param max: maximum setting for component.
+        :param increments: setting increments for component.
+        :param aspect_effects: dictionary: {aspect: percent change from
+        increasing component setting from min to max}
+        :return: xarray Dataset with the component settings (coordinate) and
+        the corresponding effects on aspects (data_vars).
+        """
         num_steps = int((max - min) / increments) + 1
         assert_msg = f"Settings must include a midpoint. For {name} got " \
                      f"{num_steps} steps (is even - no midpoint)."
@@ -69,7 +96,7 @@ def parse_components(yaml_path: Path):
                for component in component_list), assert_msg
 
     # Combine component_list into a Dataset of all possible setups.
-    # Use chunk to convert to lazy arrays - a large computation is upcoming.
+    # Use chunk to make the array lazy, since it could now be very large.
     setups_by_aspect = sum(component_list).chunk("auto")
 
     return setups_by_aspect
@@ -78,6 +105,10 @@ def parse_components(yaml_path: Path):
 def optimum_setup(setups_by_aspect: Dataset, aspect_targets: dict):
     """
     Compare every setup to the target outcomes, print out the best setup.
+
+    :param setups_by_aspect: xarray Dataset containing settings for each
+    component (coordinates) and their effects on aspects (data_vars).
+    :param aspect_targets: dictionary of the target value for each aspect.
     """
     assert_msg = f"Incorrect type for setups_by_aspect: expected xarray " \
                  f"Dataset, got {type(setups_by_aspect)}."
@@ -93,27 +124,39 @@ def optimum_setup(setups_by_aspect: Dataset, aspect_targets: dict):
                           for aspect, target in aspect_targets.items()]
     print("\n\t".join(["TARGET:", *aspect_targets_str]))
 
+    # Calculate the absolute delta between aspect value and target for
+    # every setup, then combine the aspect deltas into an overall delta.
     for aspect, target in aspect_targets.items():
         setups_by_aspect[aspect] = abs(setups_by_aspect[aspect] - target)
     setups_overall = setups_by_aspect.to_array(dim="delta").sum("delta")
 
     print(f"{prod(setups_overall.shape):,} setup combinations. "
           f"Analysing against target ...")
+
+    # Find the address of the setup with the smallest delta. This will be a long
+    # computation if the array is large.
     optimum_index = setups_overall.argmin().data.compute()
     optimum_address = unravel_index(optimum_index, setups_overall.shape)
     optimum_setup = setups_overall[optimum_address]
 
+    # Piggyback on xarray coords string representation, modifying for our purposes.
     output = str(optimum_setup.coords).replace("Coordinates", "OPTIMUM")
     print(output)
 
 
-def extract_targets(file_path: Path):
-    """Extract the targets from a specified saved setup file."""
+def extract_targets(file_path: Path) -> dict:
+    """
+    Extract the targets from a specified saved setup file.
+
+    :param file_path: location of the saved setup file.
+    :return: dictionary of the target value for each aspect.
+    """
     print(f"Reading '{file_path.name}' ...")
 
+    # Read the desired content from the file, which is compressed in the lz4 format.
     with open(file_path, "rb") as f:
-        stepforward = unpack("i",f.read(4))[0]
-        dataLengthEncoded = unpack("i",f.read(4))[0]
+        step_forward = unpack("i", f.read(4))[0]
+        data_length_encoded = unpack("i", f.read(4))[0]
         data_length_decoded = unpack("i", f.read(4))[0]
 
         data_decompressed = block.decompress(
@@ -121,8 +164,11 @@ def extract_targets(file_path: Path):
             uncompressed_size=data_length_decoded
         )
 
+    # Get desired dictionaries from the file content.
     data_decoded = json_loads(data_decompressed.decode("utf-8", "ignore"))
     setup_stint_data = data_decoded["mSetupStintData"]
+    # All deltas in setup_stint_data begin with "mDelta", which we look for
+    # but then remove from the string when storing the data.
     setup_deltas = {k.replace("mDelta", ""): v
                     for k, v in setup_stint_data.items() if k.startswith("mDelta")}
     setup_output = setup_stint_data["mSetupOutput"]
@@ -163,9 +209,9 @@ class _NewSetupHandler(FileSystemEventHandler):
 
 
 def main():
-    """Set up a watchdog observer to analyse any new setups that come in."""
+    """Set up a :class:`_NewSetupHandler` to analyse any new setups that come in."""
     print("Setting up ...")
-    setups_by_aspect = parse_components("components.yml")
+    setups_by_aspect = parse_components(Path("components.yml"))
     print("Components loaded.")
 
     setups_path = Path.home().joinpath("AppData", "LocalLow", "Playsport Games",
