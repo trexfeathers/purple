@@ -232,7 +232,7 @@ class _NewSetupHandler(FileSystemEventHandler):
 def main():
     """Set up a :class:`_NewSetupHandler` to analyse any new setups that come in."""
     print("Setting up ...")
-    setups_by_aspect = parse_components(Path("components.yml"))
+    setups_by_aspect = parse_components(Path(__file__).parent.joinpath("components.yml"))
     print("Components loaded.")
 
     setups_path = Path.home().joinpath(
