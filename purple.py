@@ -206,7 +206,7 @@ def extract_targets(file_path: Path) -> dict:
     aspect_targets = {}
     for aspect, delta in setup_deltas.items():
         aspect_names = delta_name_mapping[aspect]
-        target = delta - setup_output[aspect_names.setup_output]
+        target = setup_output[aspect_names.setup_output] - delta
         aspect_targets[aspect_names.gui] = target
 
     return aspect_targets
