@@ -158,6 +158,7 @@ def optimum_setup(setups_by_aspect: Dataset, aspect_targets: dict):
 
     # Piggyback on xarray coords string representation, modifying for our purposes.
     output = str(optimum_setup.coords).replace("Coordinates", "OPTIMUM")
+    output += f"\n\t(delta: {optimum_setup.data.compute()})"
     print(output)
 
 
