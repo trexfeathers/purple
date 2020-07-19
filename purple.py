@@ -16,7 +16,7 @@ Key concepts
   conflicting impacts on the setup **aspects**.
 """
 
-from collections import namedtuple
+from collections import namedtuple, OrderedDict
 from json import loads as json_loads
 from time import sleep
 from pathlib import Path
@@ -194,18 +194,19 @@ def extract_targets(file_path: Path) -> dict:
 
     # Aspects have different names in different places.
     # Map the different names, anchored to the names in setup_deltas.
+    # (Sorted in same way as is displayed in GUI).
     alt_names = namedtuple("AspectAlternativeNames", ("gui", "setup_output"))
-    delta_name_mapping = {
-        "Aerodynamics": alt_names("Downforce", "aerodynamics"),
-        "Handling": alt_names("Handling", "handling"),
-        "SpeedBalance": alt_names("Speed Balance", "speedBalance"),
-    }
+    delta_name_mapping = OrderedDict([
+        ("Aerodynamics", alt_names("Downforce", "aerodynamics")),
+        ("Handling", alt_names("Handling", "handling")),
+        ("SpeedBalance", alt_names("Speed Balance", "speedBalance")),
+    ])
 
     # Use the name handling above to get the relevant values from dictionaries
     # and determine the target.
-    aspect_targets = {}
-    for aspect, delta in setup_deltas.items():
-        aspect_names = delta_name_mapping[aspect]
+    aspect_targets = OrderedDict()
+    for aspect, aspect_names in delta_name_mapping.items():
+        delta = setup_deltas[aspect]
         target = setup_output[aspect_names.setup_output] + delta
         aspect_targets[aspect_names.gui] = target
 
