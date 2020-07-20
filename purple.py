@@ -131,6 +131,8 @@ def optimum_setup(setups_by_aspect: Dataset, aspect_targets: dict):
     )
     assert aspect_targets.keys() == setups_by_aspect.data_vars.keys(), assert_msg
 
+    setups_by_aspect = setups_by_aspect.copy(deep=True)
+
     # Print target in similar format to xarray coords.
     col_width = max(len(key) for key in aspect_targets.keys()) + 2  # padding
     aspect_targets_str = [
