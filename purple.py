@@ -199,11 +199,13 @@ def extract_targets(file_path: Path) -> dict:
     # Map the different names, anchored to the names in setup_deltas.
     # (Sorted in same way as is displayed in GUI).
     alt_names = namedtuple("AspectAlternativeNames", ("gui", "setup_output"))
-    delta_name_mapping = OrderedDict([
-        ("Aerodynamics", alt_names("Downforce", "aerodynamics")),
-        ("Handling", alt_names("Handling", "handling")),
-        ("SpeedBalance", alt_names("Speed Balance", "speedBalance")),
-    ])
+    delta_name_mapping = OrderedDict(
+        [
+            ("Aerodynamics", alt_names("Downforce", "aerodynamics")),
+            ("Handling", alt_names("Handling", "handling")),
+            ("SpeedBalance", alt_names("Speed Balance", "speedBalance")),
+        ]
+    )
 
     # Use the name handling above to get the relevant values from dictionaries
     # and determine the target.
@@ -236,7 +238,9 @@ class _NewSetupHandler(FileSystemEventHandler):
 def main():
     """Set up a :class:`_NewSetupHandler` to analyse any new setups that come in."""
     print("Setting up ...")
-    setups_by_aspect = parse_components(Path(__file__).parent.joinpath("components.yml"))
+    setups_by_aspect = parse_components(
+        Path(__file__).parent.joinpath("components.yml")
+    )
     print("Components loaded.")
 
     setups_path = Path.home().joinpath(
