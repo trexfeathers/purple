@@ -16,7 +16,7 @@ Key concepts
   conflicting impacts on the setup **aspects**.
 """
 
-from collections import namedtuple
+from collections import namedtuple, OrderedDict
 from json import loads as json_loads
 from time import sleep
 from pathlib import Path
@@ -131,6 +131,8 @@ def optimum_setup(setups_by_aspect: Dataset, aspect_targets: dict):
     )
     assert aspect_targets.keys() == setups_by_aspect.data_vars.keys(), assert_msg
 
+    setups_by_aspect = setups_by_aspect.copy(deep=True)
+
     # Print target in similar format to xarray coords.
     col_width = max(len(key) for key in aspect_targets.keys()) + 2  # padding
     aspect_targets_str = [
@@ -154,10 +156,11 @@ def optimum_setup(setups_by_aspect: Dataset, aspect_targets: dict):
     # computation if the array is large.
     optimum_index = setups_overall.argmin().data.compute()
     optimum_address = unravel_index(optimum_index, setups_overall.shape)
-    optimum_setup = setups_overall[optimum_address]
+    optimum_setup = setups_overall[optimum_address].compute()
 
     # Piggyback on xarray coords string representation, modifying for our purposes.
     output = str(optimum_setup.coords).replace("Coordinates", "OPTIMUM")
+    output += f"\n\t(delta: {optimum_setup.data})"
     print(output)
 
 
@@ -194,19 +197,22 @@ def extract_targets(file_path: Path) -> dict:
 
     # Aspects have different names in different places.
     # Map the different names, anchored to the names in setup_deltas.
+    # (Sorted in same way as is displayed in GUI).
     alt_names = namedtuple("AspectAlternativeNames", ("gui", "setup_output"))
-    delta_name_mapping = {
-        "Aerodynamics": alt_names("Downforce", "aerodynamics"),
-        "Handling": alt_names("Handling", "handling"),
-        "SpeedBalance": alt_names("Speed Balance", "speedBalance"),
-    }
+    delta_name_mapping = OrderedDict(
+        [
+            ("Aerodynamics", alt_names("Downforce", "aerodynamics")),
+            ("Handling", alt_names("Handling", "handling")),
+            ("SpeedBalance", alt_names("Speed Balance", "speedBalance")),
+        ]
+    )
 
     # Use the name handling above to get the relevant values from dictionaries
     # and determine the target.
-    aspect_targets = {}
-    for aspect, delta in setup_deltas.items():
-        aspect_names = delta_name_mapping[aspect]
-        target = delta - setup_output[aspect_names.setup_output]
+    aspect_targets = OrderedDict()
+    for aspect, aspect_names in delta_name_mapping.items():
+        delta = setup_deltas[aspect]
+        target = setup_output[aspect_names.setup_output] + delta
         aspect_targets[aspect_names.gui] = target
 
     return aspect_targets
@@ -232,7 +238,9 @@ class _NewSetupHandler(FileSystemEventHandler):
 def main():
     """Set up a :class:`_NewSetupHandler` to analyse any new setups that come in."""
     print("Setting up ...")
-    setups_by_aspect = parse_components(Path("components.yml"))
+    setups_by_aspect = parse_components(
+        Path(__file__).parent.joinpath("components.yml")
+    )
     print("Components loaded.")
 
     setups_path = Path.home().joinpath(
