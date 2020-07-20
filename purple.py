@@ -156,11 +156,11 @@ def optimum_setup(setups_by_aspect: Dataset, aspect_targets: dict):
     # computation if the array is large.
     optimum_index = setups_overall.argmin().data.compute()
     optimum_address = unravel_index(optimum_index, setups_overall.shape)
-    optimum_setup = setups_overall[optimum_address]
+    optimum_setup = setups_overall[optimum_address].compute()
 
     # Piggyback on xarray coords string representation, modifying for our purposes.
     output = str(optimum_setup.coords).replace("Coordinates", "OPTIMUM")
-    output += f"\n\t(delta: {optimum_setup.data.compute()})"
+    output += f"\n\t(delta: {optimum_setup.data})"
     print(output)
 
 
