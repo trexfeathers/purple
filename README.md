@@ -14,3 +14,4 @@
 # Purple
 A toy project for up-skilling Python - finds the optimal setup for a driver's
 race weekend in the PC game [Motorsport Manager](http://www.motorsportmanager.com/).
+
